@@ -13,7 +13,7 @@
   <!-- FontAwesome Icons -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght=300;400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
     body {
       font-family: 'Noto Sans TC', sans-serif;
     }
@@ -345,7 +345,7 @@
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">時間 (Time)</label>
-              <input type="text" v-model="form.time" placeholder="例如：15:45:00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+              <input type="text" v-model="form.time" placeholder="role: 例如：15:45:00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
             </div>
           </div>
         </div>
@@ -688,27 +688,34 @@
           selectedGrades.value = [];
         };
 
-        // Firebase Cloud Save Logic for Parents Sharing
+        // Firebase Cloud Save Logic for Parents Sharing (With Local URL fallback)
         const generateShareLink = async () => {
-          if (!firebaseEnabled || !user.value) {
-            showCustomAlert("系統提示", "雲端分享服務未在當前環境啟用，目前僅支援本地離線儲存。");
-            return;
-          }
           isSavingShare.value = true;
           try {
-            const shareId = crypto.randomUUID();
-            // RULE 1: /artifacts/{appId}/public/data/{collectionName}/{documentId}
-            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shares', shareId);
-            await setDoc(docRef, {
-              timetable: timetableData.value,
-              createdAt: new Date().toISOString(),
-              selectedGrades: selectedGrades.value
-            });
-            shareUrl.value = window.location.origin + window.location.pathname + '?share=' + shareId;
+            if (firebaseEnabled && user.value) {
+              // 1. 若 Firebase 雲端可用，使用雲端儲存
+              const shareId = crypto.randomUUID();
+              const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shares', shareId);
+              await setDoc(docRef, {
+                timetable: timetableData.value,
+                createdAt: new Date().toISOString(),
+                selectedGrades: selectedGrades.value
+              });
+              shareUrl.value = window.location.origin + window.location.pathname + '?share=' + shareId;
+            } else {
+              // 2. 若 Firebase 不可用（例如在當前預覽環境中），自動降級為「Base64 壓縮本地編碼網址」模式
+              const stateObj = {
+                t: timetableData.value,
+                g: selectedGrades.value
+              };
+              // 轉為 Base64 字串
+              const base64Str = btoa(encodeURIComponent(JSON.stringify(stateObj)));
+              shareUrl.value = window.location.origin + window.location.pathname + '?data=' + base64Str;
+            }
             isShareModalOpen.value = true;
           } catch (error) {
-            console.error("Firebase saving error:", error);
-            showCustomAlert("儲存失敗", "無法將課表上傳至雲端儲存，請確認網路狀態與配置。");
+            console.error("Generating share link error:", error);
+            showCustomAlert("產生失敗", "無法為您產生分享網址，請確認本地瀏覽器支援。");
           } finally {
             isSavingShare.value = false;
           }
@@ -768,8 +775,27 @@
           }
         };
 
+        // Loading from local decoded Base64 URL param
+        const loadLocalDecodedData = (base64Str) => {
+          try {
+            const decodedStr = decodeURIComponent(atob(base64Str));
+            const parsed = JSON.parse(decodedStr);
+            if (parsed && parsed.t) {
+              timetableData.value = parsed.t;
+              if (parsed.g && parsed.g.length > 0) {
+                selectedGrades.value = parsed.g;
+              }
+              fileName.value = "已載入本地離線分享課表";
+              return true;
+            }
+          } catch (e) {
+            console.error("Decoded parsing failed", e);
+          }
+          return false;
+        };
+
         const exitParentMode = () => {
-          // Remove ?share from URL cleanly without page reload
+          // Remove parameters from URL cleanly without page reload
           const newUrl = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, newUrl);
           isParentMode.value = false;
@@ -995,6 +1021,20 @@
 
         // Setup safe mounting routing configuration
         onMounted(async () => {
+          // Parse Routing Parameters first (Both Share ID & Data base64)
+          const urlParams = new URLSearchParams(window.location.search);
+          const shareId = urlParams.get('share');
+          const dataParam = urlParams.get('data');
+
+          if (shareId) {
+            isParentMode.value = true;
+          } else if (dataParam) {
+            isParentMode.value = true;
+            loadLocalDecodedData(dataParam);
+          } else {
+            loadInitialData();
+          }
+
           if (firebaseEnabled) {
             try {
               // RULE 3: Auth Before Queries flow
@@ -1006,24 +1046,13 @@
 
               onAuthStateChanged(auth, (usr) => {
                 user.value = usr;
-                
-                // Check routing for active share ID parameter
-                const urlParams = new URLSearchParams(window.location.search);
-                const shareId = urlParams.get('share');
                 if (shareId) {
-                  isParentMode.value = true;
                   loadSharedTimetable(shareId);
-                } else {
-                  loadInitialData();
                 }
               });
             } catch (err) {
               console.warn("Auth initialization skipped.", err);
-              loadInitialData();
             }
-          } else {
-            // Firebase disabled fallback path: load locally
-            loadInitialData();
           }
         });
 
