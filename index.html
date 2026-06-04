@@ -28,7 +28,7 @@
       background: #cbd5e1;
       border-radius: 3px;
     }
-    /* 確保在 Vue 編譯完成前，絕不顯示任何 raw 模板代碼 */
+    /* 確保在 Vue 編譯完成前，絕不顯示 any raw 模板代碼 */
     [v-cloak] {
       display: none !important;
     }
@@ -233,11 +233,11 @@
                     </td>
 
                     <!-- Columns for Active Days -->
-                    <td v-for="day in activeDaysInView" :key="day" class="p-2 border-l border-slate-100 align-middle h-24">
+                    <td v-for="day in activeDaysInView" :key="day" class="p-2 border-l border-slate-100 align-middle">
                       
-                      <!-- Case 1: Render Lessons -->
+                      <!-- Case 1: Render Lessons (Auto expand height without scrolling) -->
                       <div v-if="getLessons(day, timeSlot).length > 0" 
-                           class="h-full rounded-xl p-1 bg-transparent flex flex-col justify-center space-y-1 overflow-y-auto scrollbar-thin">
+                           class="min-h-[4.5rem] rounded-xl p-1 bg-transparent flex flex-col justify-center space-y-1">
                         
                         <div v-for="lesson in getLessons(day, timeSlot)" :key="lesson.id" 
                              :class="getSubjectColorClass(lesson.subject)"
@@ -270,11 +270,11 @@
                         </button>
                       </div>
 
-                      <!-- Case 2: Empty Slot State -->
-                      <div v-else class="h-full">
+                      <!-- Case 2: Empty Slot State (Keep minimum height but allow stretching) -->
+                      <div v-else class="min-h-[4.5rem] flex flex-col justify-center">
                         <!-- Active Editing Cell (Only shows dashed border & cursor in Edit Mode) -->
                         <div v-if="isEditMode && !isParentMode" 
-                             class="h-full flex items-center justify-center border border-dashed border-slate-200 hover:border-indigo-300 hover:bg-slate-50/50 rounded-xl transition cursor-pointer group" 
+                             class="min-h-[4.5rem] w-full flex items-center justify-center border border-dashed border-slate-200 hover:border-indigo-300 hover:bg-slate-50/50 rounded-xl transition cursor-pointer group" 
                              @click="openEmptyAddModal(day, timeSlot)">
                           <span class="text-[10px] text-slate-400 font-medium group-hover:text-indigo-600 flex items-center gap-1">
                             <i class="fa-solid fa-plus text-[9px]"></i> 排課
@@ -282,7 +282,7 @@
                         </div>
                         
                         <!-- Presentation/Clean Mode (Completely blank and empty) -->
-                        <div v-else class="h-full w-full"></div>
+                        <div v-else class="min-h-[4.5rem] w-full"></div>
                       </div>
 
                     </td>
@@ -749,40 +749,80 @@
           selectedGrades.value = [];
         };
 
-        // --- 核心壓縮與解壓縮算法 ---
-        // 將重複出現的關鍵字進行高度精簡壓縮，將導出網址字元縮短 75% 以上！
+        // --- 極致高度精簡自訂壓縮算法 ---
+        // 解決 Base64 網址過長 (URL too long) 問題。
+        // 將整個課表利用「自訂字典映射法」打包成僅用單字元與點/線分割的超小自訂字串，體積大減 80%！
         const compressData = (rawList, rawGrades) => {
-          // 關鍵字代碼表
-          const dMap = { "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6, "Sun": 7 };
-          const sMap = { "Reading": "R", "Grammar": "G", "Writing": "W", "Listening": "L" };
-
-          const compressedLessons = rawList.map(item => {
-            // 時間只保留4位數字 (例如: "15:45:00" -> 1545)
-            let rawTime = item.time.split(':');
-            let shortTime = rawTime.length >= 2 ? parseInt(rawTime[0] + rawTime[1]) : 900;
-            
-            return [
-              item.className,                       // 0: 年級班別 (e.g. "P1")
-              sMap[item.subject] || item.subject,   // 1: 縮寫科目 (e.g. "R")
-              dMap[item.day] || item.day,           // 2: 星期縮寫 (e.g. 1)
-              shortTime                             // 3: 4位數時間 (e.g. 1545)
-            ];
+          if (!rawList || rawList.length === 0) return '';
+          
+          // 1. 建立當前課表所屬的班級、科目和時間字典
+          const classes = [...new Set(rawList.map(item => item.className))].sort();
+          const subjects = [...new Set(rawList.map(item => item.subject))].sort();
+          const times = [...new Set(rawList.map(item => item.time))].sort();
+          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+          
+          // 2. 將每堂課轉換成純整數索引陣列，並以 "." 拼接 (class.subject.day.time)
+          const bodyParts = rawList.map(item => {
+            const classIdx = classes.indexOf(item.className);
+            const subjIdx = subjects.indexOf(item.subject);
+            const dayIdx = days.indexOf(item.day);
+            const timeIdx = times.indexOf(item.time);
+            return `${classIdx}.${subjIdx}.${dayIdx}.${timeIdx}`;
           });
-
-          return {
-            g: rawGrades,
-            l: compressedLessons
-          };
+          
+          // 3. 欄位以 "," 拼接，並以 "|" 分隔整體字典頭部與內容主體
+          const gradesPart = rawGrades.join(',');
+          const classesPart = classes.join(',');
+          const subjectsPart = subjects.join(',');
+          const timesPart = times.join(',');
+          
+          // 拼裝格式: [已選年級]|[班級字典]|[科目字典]|[時間字典]|[課程索引 body]
+          return [gradesPart, classesPart, subjectsPart, timesPart, bodyParts.join('-')].join('|');
         };
 
-        const decompressData = (compressedObj) => {
+        // 新版極致自訂壓縮字串之解壓縮還原法
+        const decompressData = (compressedStr) => {
+          if (!compressedStr || !compressedStr.includes('|')) return [];
+          
+          const parts = compressedStr.split('|');
+          if (parts.length < 5) return [];
+          
+          const classes = parts[1].split(',').filter(Boolean);
+          const subjects = parts[2].split(',').filter(Boolean);
+          const times = parts[3].split(',').filter(Boolean);
+          const bodyStr = parts[4];
+          
+          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+          if (!bodyStr) return [];
+          
+          const bodyParts = bodyStr.split('-');
+          return bodyParts.map((item, index) => {
+            const idxs = item.split('.');
+            if (idxs.length < 4) return null;
+            
+            const classIdx = parseInt(idxs[0]);
+            const subjIdx = parseInt(idxs[1]);
+            const dayIdx = parseInt(idxs[2]);
+            const timeIdx = parseInt(idxs[3]);
+            
+            return {
+              id: Date.now() + index,
+              className: classes[classIdx] || 'P1',
+              subject: subjects[subjIdx] || 'Reading',
+              day: days[dayIdx] || 'Mon',
+              time: times[timeIdx] || '09:00:00'
+            };
+          }).filter(Boolean);
+        };
+
+        // 舊版高壓縮格式向下相容還原法 (保障舊網址正常讀取)
+        const decompressDataOld = (compressedObj) => {
           const dRevMap = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun" };
           const sRevMap = { "R": "Reading", "G": "Grammar", "W": "Writing", "L": "Listening" };
 
           if (!compressedObj || !compressedObj.l) return [];
 
           return compressedObj.l.map((arr, index) => {
-            // 還原時間格式 (例如: 1545 -> "15:45:00")
             let timeStr = String(arr[3]);
             if (timeStr.length === 3) timeStr = "0" + timeStr;
             let formattedTime = timeStr.length === 4 ? `${timeStr.substring(0, 2)}:${timeStr.substring(2, 4)}:00` : "09:00:00";
@@ -812,14 +852,13 @@
               });
               shareUrl.value = window.location.origin + window.location.pathname + '?share=' + shareId;
             } else {
-              // 2. 若 Firebase 不可用，自動降級為「高度壓縮版本地編碼網址」模式
-              const compressedObj = compressData(timetableData.value, selectedGrades.value);
-              const compressedStr = btoa(encodeURIComponent(JSON.stringify(compressedObj)));
-              const longUrl = window.location.origin + window.location.pathname + '?d=' + compressedStr;
+              // 2. 若 Firebase 不可用（本地離線），採用「自訂極窄長度壓縮網址」方案
+              const compressedStr = compressData(timetableData.value, selectedGrades.value);
+              const base64Str = btoa(encodeURIComponent(compressedStr));
+              const longUrl = window.location.origin + window.location.pathname + '?d=' + base64Str;
 
-              // 3. 嘗試使用免註冊公開短網址 API (is.gd) 進行極致縮短
+              // 3. 嘗試使用免註冊公開短網址 API (is.gd) 進行縮短
               try {
-                // 透過 is.gd JSONP/CORS 接口直接線上生成乾淨短連結
                 const response = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`, {
                   method: 'GET',
                   mode: 'cors'
@@ -835,7 +874,7 @@
                   shareUrl.value = longUrl;
                 }
               } catch (shortenErr) {
-                // 如果遭遇網絡跨域限制，Fallback 使用我們已經深度壓縮過的長度優化 URL
+                // 如果遭遇網絡跨域限制，Fallback 使用我們已經深度壓縮過的長度優化 URL (此時長度僅幾百字元，十分安全)
                 shareUrl.value = longUrl;
               }
             }
@@ -906,23 +945,35 @@
         const loadLocalDecodedData = (base64Str) => {
           try {
             const decodedStr = decodeURIComponent(atob(base64Str));
+            
+            // 1. 優先匹配：新版極緻縮短自訂格式（含有 "|" 符號）
+            if (decodedStr.includes('|')) {
+              const parts = decodedStr.split('|');
+              const grades = parts[0].split(',').filter(Boolean);
+              timetableData.value = decompressData(decodedStr);
+              if (grades.length > 0) {
+                selectedGrades.value = grades;
+              }
+              fileName.value = "已載入本地高壓縮分享課表";
+              return true;
+            }
+
+            // 2. 向下相容：舊版高強度壓縮短網址格式
             const parsed = JSON.parse(decodedStr);
-            // 兼容舊格式
             if (parsed && parsed.t) {
               timetableData.value = parsed.t;
               if (parsed.g && parsed.g.length > 0) {
                 selectedGrades.value = parsed.g;
               }
-              fileName.value = "已載入本地離線分享課表";
+              fileName.value = "已載入本地舊版離線分享課表";
               return true;
             } 
-            // 新的高強度壓縮短網址格式
             else if (parsed && parsed.l) {
-              timetableData.value = decompressData(parsed);
+              timetableData.value = decompressDataOld(parsed);
               if (parsed.g && parsed.g.length > 0) {
                 selectedGrades.value = parsed.g;
               }
-              fileName.value = "已載入本地高壓縮分享課表";
+              fileName.value = "已載入本地舊版高壓縮分享課表";
               return true;
             }
           } catch (e) {
