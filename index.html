@@ -1,860 +1,588 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>課堂時間表生成器 (家長分享穩定版)</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght=300;400;500;700&display=swap');
-    body {
-      font-family: 'Noto Sans TC', sans-serif;
-    }
-    .scrollbar-thin::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    .scrollbar-thin::-webkit-scrollbar-track {
-      background: #f1f5f9;
-    }
-    .scrollbar-thin::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 3px;
-    }
-    [v-cloak] {
-      display: none !important;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>課堂時間表生成器 (家長分享版)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- SheetJS (XLSX) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+    .scrollbar-thin::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    /* 確保在 Vue 編譯完成前，絕不顯示任何 raw 模板代碼 */
+    [v-cloak] {
+      display: none !important;
+    }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
-  <div id="app" class="p-4 md:p-6 max-w-7xl mx-auto" v-cloak>
-    
-    <div v-if="isParentMode" class="mb-5 bg-gradient-to-r from-indigo-600 to-violet-700 text-white px-5 py-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md shadow-indigo-100 animate-fade-in">
-      <div class="flex items-center gap-3">
-        <div class="bg-white/20 p-2 rounded-xl">
-          <i class="fa-solid fa-eye text-lg"></i>
-        </div>
-        <div>
-          <span class="font-bold text-base block sm:inline">📢 家長唯讀分享模式</span>
-          <p class="text-xs text-indigo-100 mt-0.5">此頁面為唯讀版本，所有編輯與管理功能已關閉。您可以點擊篩選不同的年級與切換平日/週末課表。</p>
-        </div>
-      </div>
-      <button @click="exitParentMode" class="px-3.5 py-1.5 bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-bold rounded-xl transition shadow-sm shrink-0">
-        返回建立課表
-      </button>
-    </div>
-
-    <header class="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-      <div>
-        <div class="flex items-center gap-3">
-          <div class="bg-indigo-600 text-white p-2.5 rounded-xl shadow-md shadow-indigo-100">
-            <i class="fa-solid fa-calendar-days text-xl"></i>
-          </div>
-          <div>
-            <h1 class="text-2xl font-bold text-slate-900">課堂時間表生成器</h1>
-            <p class="text-sm text-slate-500 mt-0.5">專注於 <span class="font-semibold text-indigo-600">多年級對照 / 課程</span> 的極簡高效排課工具</p>
-          </div>
-        </div>
-      </div>
-      
-      <div v-if="!isParentMode" class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-        
-        <button @click="generateShareLink" :disabled="isSavingShare" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-xl transition shadow-sm w-full sm:w-auto border border-indigo-150">
-          <i v-if="isSavingShare" class="fa-solid fa-spinner animate-spin"></i>
-          <i v-else class="fa-solid fa-share-nodes text-indigo-600"></i>
-          產生家長分享連結
-        </button>
-
-        <label class="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl cursor-pointer transition shadow-sm w-full sm:w-auto">
-          <i class="fa-solid fa-file-import"></i>
-          上傳 Timetable Setup.xlsx
-          <input type="file" ref="fileInput" @change="handleFileUpload" accept=".xlsx, .xls, .csv" class="hidden">
-        </label>
-        
-        <button @click="downloadTemplate" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl border border-slate-200 transition shadow-sm w-full sm:w-auto">
-          <i class="fa-solid fa-file-arrow-down text-emerald-600"></i>
-          下載 Excel 範本
-        </button>
-
-        <button @click="triggerResetConfirm" class="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 rounded-xl transition w-full sm:w-auto flex justify-center items-center" title="重置為預設資料">
-          <i class="fa-solid fa-arrow-rotate-left mr-2 sm:mr-0"></i>
-          <span class="sm:hidden text-sm font-medium">重置範例</span>
-        </button>
-      </div>
-    </header>
-
-    <div v-if="isLoading" class="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-100">
-      <i class="fa-solid fa-spinner animate-spin text-4xl text-indigo-600 mb-4"></i>
-      <p class="text-sm text-slate-500 font-semibold">正在從雲端載入課表數據...</p>
-    </div>
-
-    <div v-else class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      
-      <div class="lg:col-span-1 space-y-6">
-        
-        <div v-if="!isParentMode" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-            <i class="fa-solid fa-sliders mr-1"></i> 檢視設定
-          </h2>
-          
-          <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-150">
-            <div class="flex flex-col">
-              <span class="text-xs font-bold text-slate-700">啟用編輯模式</span>
-              <span class="text-[10px] text-slate-400">開啟後可自由增刪</span>
-            </div>
-            <button @click="isEditMode = !isEditMode" 
-                    :class="isEditMode ? 'bg-indigo-600' : 'bg-slate-300'" 
-                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none">
-              <span :class="isEditMode ? 'translate-x-5' : 'translate-x-0'" 
-                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
-            </button>
-          </div>
-        </div>
-
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-              <i class="fa-solid fa-filter mr-1"></i> 年級篩選
-            </h2>
-            <div class="flex gap-2">
-              <button @click="selectAllGrades" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">全選</button>
-              <span class="text-slate-300">|</span>
-              <button @click="deselectAllGrades" class="text-xs text-slate-500 hover:text-slate-800 font-semibold">清空</button>
-            </div>
-          </div>
-
-          <div class="space-y-2.5 max-h-64 overflow-y-auto scrollbar-thin pr-1">
-            <div v-for="grade in uniqueGrades" :key="grade" 
-                 @click="toggleGradeSelection(grade)"
-                 class="flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all duration-150"
-                 :class="selectedGrades.includes(grade) ? 'bg-indigo-50/50 border-indigo-200 text-indigo-900 font-medium' : 'bg-slate-50/30 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'">
-              <div class="flex items-center justify-center w-5 h-5 rounded-md border"
-                   :class="selectedGrades.includes(grade) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'">
-                <i v-if="selectedGrades.includes(grade)" class="fa-solid fa-check text-[10px]"></i>
-              </div>
-              <span class="text-sm">{{ grade }} 年級</span>
-            </div>
-            <div v-if="uniqueGrades.length === 0" class="text-slate-400 text-xs py-4 text-center">
-              暫無年級資料
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="lg:col-span-3 space-y-4">
-        
-        <div v-if="fileName && !isParentMode" class="bg-emerald-50 border border-emerald-100 text-emerald-800 px-4 py-3 rounded-2xl flex items-center justify-between text-sm shadow-sm animate-fade-in">
-          <div class="flex items-center gap-2">
-            <i class="fa-solid fa-circle-check text-emerald-600"></i>
-            <span>成功載入來自 <strong class="font-semibold">{{ fileName }}</strong> 的課表數據並完成時間校正。</span>
-          </div>
-          <button @click="fileName = ''" class="text-emerald-600 hover:text-emerald-800">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <span class="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg">
-              按年級多選檢視
-            </span>
-            <h2 class="text-xl font-bold text-slate-900 mt-1">
-              {{ viewTitle }} 課程時間表
-            </h2>
-          </div>
-          
-          <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl w-full md:w-auto">
-            <button @click="dayType = 'weekday'" 
-                    :class="dayType === 'weekday' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                    class="flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5">
-              <i class="fa-solid fa-business-time"></i>
-              平日課表 (一至五)
-            </button>
-            <button @click="dayType = 'weekend'" 
-                    :class="dayType === 'weekend' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
-                    class="flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5">
-              <i class="fa-solid fa-umbrella-beach"></i>
-              週末課表 (六、日)
-            </button>
-          </div>
-
-          <button @click="exportCurrentTimetable" class="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition shadow-sm w-full md:w-auto justify-center">
-            <i class="fa-solid fa-print"></i>
-            列印當前課表
-          </button>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div class="overflow-x-auto scrollbar-thin">
-            <table class="w-full min-w-[700px] border-collapse table-fixed">
-              <thead>
-                <tr class="bg-slate-50 border-b border-slate-100">
-                  <th class="w-28 p-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">時段 / 節次</th>
-                  <th v-for="day in activeDaysInView" :key="day" class="p-3 text-center text-xs font-bold text-slate-700 uppercase tracking-wider border-l border-slate-100">
-                    {{ translateDay(day) }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100">
-                <template v-for="timeSlot in activeTimeSlotsInView" :key="timeSlot">
-                  <tr class="hover:bg-slate-50/30 transition">
-                    <td class="p-3 border-r border-slate-100 align-middle">
-                      <div class="text-xs font-bold text-indigo-600">{{ formatTime(timeSlot) }}</div>
-                      <div class="text-[10px] text-slate-400 mt-0.5">課程時段</div>
-                    </td>
-
-                    <td v-for="day in activeDaysInView" :key="day" class="p-2 border-l border-slate-100 align-middle h-24">
-                      
-                      <div v-if="getLessons(day, timeSlot).length > 0" 
-                           class="h-full rounded-xl p-1 bg-transparent flex flex-col justify-center space-y-1 overflow-y-auto scrollbar-thin">
-                        
-                        <div v-for="lesson in getLessons(day, timeSlot)" :key="lesson.id" 
-                             :class="getSubjectColorClass(lesson.subject)"
-                             class="text-xs leading-snug p-2 rounded-xl border shadow-sm flex items-center justify-between relative group/item transition-all duration-150 min-h-[46px] w-full">
-                          
-                          <span class="px-1.5 py-0.5 bg-slate-900/10 rounded font-black text-[10px] text-indigo-950 shrink-0 select-none mr-2">
-                            {{ lesson.className }}
-                          </span>
-
-                          <div class="font-extrabold text-indigo-950 text-xs tracking-wide text-right flex-1 truncate">
-                            {{ lesson.subject }}
-                          </div>
-
-                          <div v-if="isEditMode && !isParentMode" class="absolute inset-0 bg-slate-900/10 rounded-xl opacity-0 group-hover/item:opacity-100 flex items-center justify-center transition gap-1.5">
-                            <button @click.stop="openEditModal(lesson)" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded p-1.5 text-[10px] shadow" title="編輯">
-                              <i class="fa-solid fa-pen"></i>
-                            </button>
-                            <button @click.stop="triggerDeleteConfirm(lesson)" class="bg-rose-600 hover:bg-rose-700 text-white rounded p-1.5 text-[10px] shadow" title="刪除">
-                              <i class="fa-solid fa-trash"></i>
-                            </button>
-                          </div>
-                        </div>
-
-                        <button v-if="isEditMode && !isParentMode" @click="openEmptyAddModal(day, timeSlot)" class="w-full py-1 border border-dashed border-slate-300 hover:border-indigo-400 rounded-lg text-[10px] text-slate-400 hover:text-indigo-600 transition flex items-center justify-center gap-1">
-                          <i class="fa-solid fa-plus"></i> 新增
-                        </button>
-                      </div>
-
-                      <div v-else class="h-full">
-                        <div v-if="isEditMode && !isParentMode" 
-                             class="h-full flex items-center justify-center border border-dashed border-slate-200 hover:border-indigo-300 hover:bg-slate-50/50 rounded-xl transition cursor-pointer group" 
-                             @click="openEmptyAddModal(day, timeSlot)">
-                          <span class="text-[10px] text-slate-400 font-medium group-hover:text-indigo-600 flex items-center gap-1">
-                            <i class="fa-solid fa-plus text-[9px]"></i> 排課
-                          </span>
-                        </div>
-                        
-                        <div v-else class="h-full w-full"></div>
-                      </div>
-
-                    </td>
-                  </tr>
-                </template>
-
-                <tr v-if="activeTimeSlotsInView.length === 0">
-                  <td :colspan="activeDaysInView.length + 1" class="p-12 text-center text-slate-400 text-sm">
-                    <i class="fa-regular fa-calendar-xmark text-4xl mb-3 block text-slate-300"></i>
-                    請勾選左側要顯示的年級課表，或當前分組（{{ dayType === 'weekday' ? '平日' : '週末' }}）暫無排課資料。
-                    <span v-if="isEditMode && !isParentMode" class="block mt-2 text-xs text-indigo-600">可以開啟編輯模式或新增課堂！</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-      </div>
-
-    </div>
-
-    <div v-if="isModalOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden transform transition-all scale-100">
-        <div class="bg-indigo-600 px-5 py-4 text-white flex justify-between items-center">
-          <div>
-            <h3 class="font-bold text-lg">{{ editingCell.isExisting ? '編輯課堂資訊' : '新增課程安排' }}</h3>
-            <p class="text-xs text-indigo-100 mt-0.5">{{ translateDay(form.day) }} · {{ formatTime(form.time) }}</p>
-          </div>
-          <button @click="closeEditModal" class="text-white hover:text-indigo-200 transition">
-            <i class="fa-solid fa-xmark text-lg"></i>
-          </button>
-        </div>
-
-        <div class="p-5 space-y-4">
-          <div>
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">年級 / 班級 (School Grade)</label>
-            <input type="text" v-model="form.className" :placeholder="'例如：P1, P2'" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-            <p class="text-[10px] text-slate-400 mt-1">請填寫此課程所屬的班級年級標記。</p>
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">課程科目 (Course)</label>
-            <input type="text" v-model="form.subject" placeholder="例如：Reading, Grammar, Writing" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">星期 (Day)</label>
-              <select v-model="form.day" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 transition">
-                <option v-for="d in daysLookup" :key="d.code" :value="d.code">{{ d.name }} ({{ d.code }})</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">時間 (Time)</label>
-              <input type="text" v-model="form.time" placeholder="例如：15:45:00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
-            </div>
-          </div>
-        </div>
-
-        <div class="px-5 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2.5">
-          <button @click="closeEditModal" class="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
-            取消
-          </button>
-          <button @click="saveLesson" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm">
-            確認儲存
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="isShareModalOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden p-6 text-center transform transition-all">
-        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 text-emerald-600 mb-4">
-          <i class="fa-solid fa-share-nodes text-xl"></i>
-        </div>
-        <h3 class="text-lg font-bold text-slate-900 mb-2">已成功生成分享連結！</h3>
-        <p class="text-xs text-slate-500 mb-5 leading-relaxed">家長點選此連結將只會看到「唯讀版」的課表，無法編輯。</p>
-        
-        <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-6">
-          <input type="text" readonly :value="shareUrl" class="bg-transparent text-slate-600 text-xs flex-1 outline-none select-all truncate px-2">
-          <button @click="copyShareUrl" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shrink-0 shadow-sm">
-            複製連結
-          </button>
-        </div>
-        
-        <button @click="isShareModalOpen = false" class="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
-          關閉
-        </button>
-      </div>
-    </div>
-
-    <div v-if="confirmDialog.isOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm p-6 text-center transform transition-all">
-        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mb-4">
-          <i class="fa-solid fa-triangle-exclamation text-xl"></i>
-        </div>
-        <h3 class="text-lg font-bold text-slate-900 mb-2">{{ confirmDialog.title }}</h3>
-        <p class="text-sm text-slate-500 mb-6 leading-relaxed">{{ confirmDialog.message }}</p>
-        <div class="flex justify-center gap-3">
-          <button @click="confirmDialog.isOpen = false" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
-            取消
-          </button>
-          <button @click="executeConfirm" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm">
-            確認
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="alertDialog.isOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm p-6 text-center transform transition-all">
-        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 text-indigo-600 mb-4">
-          <i class="fa-solid fa-info-circle text-xl"></i>
-        </div>
-        <h3 class="text-lg font-bold text-slate-900 mb-2">{{ alertDialog.title }}</h3>
-        <p class="text-sm text-slate-500 mb-6 leading-relaxed">{{ alertDialog.message }}</p>
-        <button @click="alertDialog.isOpen = false" class="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm">
-          確定
-        </button>
-      </div>
-    </div>
-
-  </div>
-
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-    import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-    import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-
-    let app, auth, db;
-    let firebaseEnabled = false;
-    
-    // 安全防白畫面修復：避免直接讀取未定義變數拋出 Exception
-    let appId = 'default-app-id';
-    if (typeof window !== 'undefined') {
-      if (window.__app_id) appId = window.__app_id;
-      
-      // 檢查外部注入的 Firebase 設定
-      if (window.__firebase_config) {
-        try {
-          const parsedConfig = typeof window.__firebase_config === 'string' 
-            ? JSON.parse(window.__firebase_config) 
-            : window.__firebase_config;
-          
-          if (parsedConfig && parsedConfig.apiKey) {
-            app = initializeApp(parsedConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            firebaseEnabled = true;
-          }
-        } catch (e) {
-          console.warn("Firebase 自動初始化失敗，切換為本地純網頁模式運行。", e);
-        }
-      }
-    }
-
-    const { createApp, ref, computed, onMounted } = Vue;
-
-    createApp({
-      setup() {
-        const daysLookup = [
-          { code: "Mon", name: "星期一" },
-          { code: "Tue", name: "星期二" },
-          { code: "Wed", name: "星期三" },
-          { code: "Thu", name: "星期四" },
-          { code: "Fri", name: "星期五" },
-          { code: "Sat", name: "星期六" },
-          { code: "Sun", name: "星期日" }
-        ];
-
-        const selectedGrades = ref([]); 
-        const timetableData = ref([]);
-        const fileName = ref('');
-        const isEditMode = ref(false); 
-        const dayType = ref('weekday'); 
-        const user = ref(null);
-        const isLoading = ref(false);
-        
-        const isModalOpen = ref(false);
-        const isShareModalOpen = ref(false);
-        const isSavingShare = ref(false);
-        const shareUrl = ref('');
-        const isParentMode = ref(false);
-        const editingCell = ref({ isExisting: false, originalId: null });
-        const form = ref({ className: '', subject: '', day: 'Mon', time: '15:45:00' });
-
-        const confirmDialog = ref({ isOpen: false, title: '', message: '', action: null });
-        const alertDialog = ref({ isOpen: false, title: '', message: '' });
-
-        const showCustomAlert = (title, message) => {
-          alertDialog.value = { isOpen: true, title, message };
-        };
-
-        const showCustomConfirm = (title, message, callback) => {
-          confirmDialog.value = { isOpen: true, title, message, action: callback };
-        };
-
-        const executeConfirm = () => {
-          if (confirmDialog.value.action) {
-            confirmDialog.value.action();
-          }
-          confirmDialog.value.isOpen = false;
-        };
-
-        const translateDay = (dayStr) => {
-          if (!dayStr) return '';
-          const found = daysLookup.find(d => d.code.toLowerCase() === dayStr.toLowerCase() || d.name === dayStr);
-          return found ? found.name : dayStr;
-        };
-
-        const formatTime = (timeStr) => {
-          if (!timeStr) return '';
-          const parts = timeStr.split(':');
-          if (parts.length >= 2) {
-            return `${parts[0]}:${parts[1]}`;
-          }
-          return timeStr;
-        };
-
-        const parseExcelTime = (timeVal) => {
-          if (timeVal === undefined || timeVal === null) return '09:00:00';
-          if (typeof timeVal === 'string' && timeVal.includes(':')) {
-            return timeVal.trim();
-          }
-          let num = parseFloat(timeVal);
-          if (!isNaN(num)) {
-            if (num >= 0 && num < 1) {
-              let totalSeconds = Math.round(num * 24 * 3600);
-              let hours = Math.floor(totalSeconds / 3600);
-              let minutes = Math.floor((totalSeconds % 3600) / 60);
-              let seconds = totalSeconds % 60;
-              const pad = (v) => String(v).padStart(2, '0');
-              return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
-            }
-          }
-          return String(timeVal).trim();
-        };
-
-        const getGradeFromClassName = (className) => {
-          if (!className) return '未分類';
-          const name = String(className).trim().toUpperCase();
-          const pMatch = name.match(/^(P\d+)/i);
-          if (pMatch) return pMatch[1].toUpperCase();
-          const digitMatch = name.match(/^(\d+)/);
-          if (digitMatch) return digitMatch[1] + '年級';
-          return name;
-        };
-
-        const defaultTimetable = [
-          { id: 1, day: "Mon", time: "15:45:00", className: "P1", subject: "Reading" },
-          { id: 2, day: "Mon", time: "18:00:00", className: "P1", subject: "Reading" },
-          { id: 3, day: "Sat", time: "09:00:00", className: "P1", subject: "Reading" },
-          { id: 4, day: "Sun", time: "11:45:00", className: "P1", subject: "Reading" },
-          { id: 5, day: "Mon", time: "16:30:00", className: "P1", subject: "Grammar" },
-          { id: 6, day: "Mon", time: "18:45:00", className: "P1", subject: "Grammar" },
-          { id: 7, day: "Sat", time: "09:45:00", className: "P1", subject: "Grammar" },
-          { id: 8, day: "Sun", time: "12:30:00", className: "P1", subject: "Grammar" },
-          { id: 9, day: "Mon", time: "17:15:00", className: "P1", subject: "Writing" },
-          { id: 10, day: "Mon", time: "16:30:00", className: "P2", subject: "Reading" },
-          { id: 11, day: "Mon", time: "18:45:00", className: "P2", subject: "Reading" },
-          { id: 12, day: "Sat", time: "10:30:00", className: "P2", subject: "Reading" },
-          { id: 13, day: "Sat", time: "17:00:00", className: "P2", subject: "Reading" },
-          { id: 14, day: "Sun", time: "10:30:00", className: "P2", subject: "Reading" },
-          { id: 15, day: "Mon", time: "15:45:00", className: "P2", subject: "Grammar" },
-          { id: 16, day: "Mon", time: "18:00:00", className: "P2", subject: "Grammar" },
-          { id: 17, day: "Sat", time: "11:15:00", className: "P2", subject: "Grammar" },
-          { id: 18, day: "Sat", time: "17:45:00", className: "P2", subject: "Grammar" },
-          { id: 19, day: "Sun", time: "11:15:00", className: "P2", subject: "Grammar" },
-          { id: 20, day: "Mon", time: "17:15:00", className: "P2", subject: "Writing" },
-          { id: 21, day: "Tue", time: "15:45:00", className: "P3", subject: "Reading" },
-          { id: 22, day: "Tue", time: "18:00:00", className: "P3", subject: "Reading" },
-          { id: 23, day: "Sat", time: "11:15:00", className: "P3", subject: "Reading" },
-          { id: 24, day: "Sat", time: "15:30:00", className: "P3", subject: "Reading" },
-          { id: 25, day: "Sun", time: "09:00:00", className: "P3", subject: "Reading" },
-          { id: 26, day: "Tue", time: "16:30:00", className: "P3", subject: "Grammar" },
-          { id: 27, day: "Tue", time: "18:45:00", className: "P3", subject: "Grammar" },
-          { id: 28, day: "Thu", time: "15:45:00", className: "P3", subject: "Grammar" },
-          { id: 29, day: "Sat", time: "12:00:00", className: "P3", subject: "Grammar" },
-          { id: 30, day: "Sat", time: "16:15:00", className: "P3", subject: "Grammar" },
-          { id: 31, day: "Sun", time: "09:45:00", className: "P3", subject: "Grammar" },
-          { id: 32, text: "Tue", day: "Tue", time: "17:15:00", className: "P3", subject: "Writing" },
-          { id: 33, day: "Wed", time: "15:45:00", className: "P4", subject: "Reading" },
-          { id: 34, day: "Wed", time: "18:00:00", className: "P4", subject: "Reading" },
-          { id: 35, day: "Sat", time: "14:00:00", className: "P4", subject: "Reading" },
-          { id: 36, day: "Sun", time: "14:00:00", className: "P4", subject: "Reading" },
-          { id: 37, day: "Wed", time: "16:30:00", className: "P4", subject: "Grammar" },
-          { id: 38, day: "Wed", time: "18:45:00", className: "P4", subject: "Grammar" },
-          { id: 39, day: "Sat", time: "14:45:00", className: "P4", subject: "Grammar" },
-          { id: 40, day: "Sun", time: "14:45:00", className: "P4", subject: "Grammar" },
-          { id: 41, day: "Wed", time: "17:15:00", className: "P4", subject: "Writing" }
-        ];
-
-        const uniqueGrades = computed(() => {
-          const grades = timetableData.value.map(item => getGradeFromClassName(item.className));
-          return [...new Set(grades)].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
-        });
-
-        const viewTitle = computed(() => {
-          if (selectedGrades.value.length === 0) return '未勾選';
-          if (selectedGrades.value.length === uniqueGrades.value.length) return '全年級';
-          return selectedGrades.value.join('、');
-        });
-
-        const activeDaysInView = computed(() => {
-          return dayType.value === 'weekday' 
-            ? ["Mon", "Tue", "Wed", "Thu", "Fri"] 
-            : ["Sat", "Sun"];
-        });
-
-        const activeTimeSlotsInView = computed(() => {
-          const filtered = timetableData.value.filter(item => 
-            selectedGrades.value.includes(getGradeFromClassName(item.className)) &&
-            activeDaysInView.value.includes(item.day)
-          );
-          const slots = filtered.map(item => item.time);
-          return [...new Set(slots)].sort((a, b) => a.localeCompare(b));
-        });
-
-        const getSubjectColorClass = (subject) => {
-          const sub = String(subject).toLowerCase();
-          if (sub.includes('reading')) return 'bg-emerald-50 border-emerald-200 text-emerald-900';
-          if (sub.includes('grammar')) return 'bg-indigo-50 border-indigo-200 text-indigo-900';
-          if (sub.includes('writing')) return 'bg-amber-50 border-amber-200 text-amber-900';
-          return 'bg-slate-50 border-slate-200 text-slate-900';
-        };
-
-        const getLessons = (day, timeSlot) => {
-          return timetableData.value.filter(item => 
-            item.day === day && 
-            item.time === timeSlot &&
-            selectedGrades.value.includes(getGradeFromClassName(item.className))
-          );
-        };
-
-        const toggleGradeSelection = (grade) => {
-          if (selectedGrades.value.includes(grade)) {
-            selectedGrades.value = selectedGrades.value.filter(g => g !== grade);
-          } else {
-            selectedGrades.value.push(grade);
-          }
-        };
-
-        const selectAllGrades = () => { selectedGrades.value = [...uniqueGrades.value]; };
-        const deselectAllGrades = () => { selectedGrades.value = []; };
-
-        const openEmptyAddModal = (day, timeSlot) => {
-          editingCell.value = { isExisting: false, originalId: null };
-          form.value = { className: '', subject: '', day: day, time: timeSlot };
-          isModalOpen.value = true;
-        };
-
-        const openEditModal = (lesson) => {
-          editingCell.value = { isExisting: true, originalId: lesson.id };
-          form.value = { ...lesson };
-          isModalOpen.value = true;
-        };
-
-        const closeEditModal = () => { isModalOpen.value = false; };
-
-        const saveLesson = () => {
-          if (!form.value.className || !form.value.subject) {
-            showCustomAlert("提示", "請填寫班級年級與課程科目名稱。");
-            return;
-          }
-
-          if (editingCell.value.isExisting) {
-            const index = timetableData.value.findIndex(item => item.id === editingCell.value.originalId);
-            if (index !== -1) {
-              timetableData.value[index] = { ...timetableData.value[index], ...form.value };
-            }
-          } else {
-            const newId = timetableData.value.length > 0 ? Math.max(...timetableData.value.map(o => o.id)) + 1 : 1;
-            timetableData.value.push({
-              id: newId,
-              className: form.value.className,
-              subject: form.value.subject,
-              day: form.value.day,
-              time: parseExcelTime(form.value.time)
-            });
-          }
-
-          const currentGrade = getGradeFromClassName(form.value.className);
-          if (!selectedGrades.value.includes(currentGrade)) {
-            selectedGrades.value.push(currentGrade);
-          }
-
-          closeEditModal();
-          autoSyncToCloud();
-        };
-
-        const triggerDeleteConfirm = (lesson) => {
-          showCustomConfirm("確認刪除", `您確定要移除 ${lesson.className} 的 ${lesson.subject} 課堂嗎？`, () => {
-            timetableData.value = timetableData.value.filter(item => item.id !== lesson.id);
-            autoSyncToCloud();
-          });
-        };
-
-        const triggerResetConfirm = () => {
-          showCustomConfirm("重置確認", "您確認要將當前課表回復為系統預設的範例課表嗎？（現有修改將會消失）", () => {
-            timetableData.value = JSON.parse(JSON.stringify(defaultTimetable));
-            selectAllGrades();
-            autoSyncToCloud();
-          });
-        };
-
-        const handleFileUpload = (e) => {
-          const files = e.target.files;
-          if (!files || files.length === 0) return;
-          const file = files[0];
-          fileName.value = file.name;
-
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const data = new Uint8Array(e.target.result);
-              const workbook = XLSX.read(data, { type: 'array' });
-              const firstSheetName = workbook.SheetNames[0];
-              const worksheet = workbook.Sheets[firstSheetName];
-              const rows = XLSX.utils.sheet_to_json(worksheet);
-
-              if (rows.length === 0) {
-                showCustomAlert("上傳失敗", "Excel 工作表中未偵測到有效的課表數據。");
-                return;
-              }
-
-              const parsedData = rows.map((row, idx) => {
-                const dayKey = Object.keys(row).find(k => k.toLowerCase().includes('day') || k.includes('星期') || k.includes('天'));
-                const timeKey = Object.keys(row).find(k => k.toLowerCase().includes('time') || k.includes('時間') || k.includes('時段'));
-                const classKey = Object.keys(row).find(k => k.toLowerCase().includes('class') || k.includes('grade') || k.includes('班') || k.includes('年級'));
-                const subjectKey = Object.keys(row).find(k => k.toLowerCase().includes('subject') || k.includes('course') || k.includes('科目') || k.includes('課程'));
-
-                return {
-                  id: idx + 1,
-                  day: row[dayKey] ? String(row[dayKey]).trim() : 'Mon',
-                  time: parseExcelTime(row[timeKey]),
-                  className: row[classKey] ? String(row[classKey]).trim() : 'P1',
-                  subject: row[subjectKey] ? String(row[subjectKey]).trim() : 'General'
-                };
-              });
-
-              timetableData.value = parsedData;
-              selectAllGrades();
-              autoSyncToCloud();
-            } catch (err) {
-              console.error(err);
-              showCustomAlert("解析失敗", "上傳的 Excel 格式不正確或損壞。");
-            }
-          };
-          reader.readAsArrayBuffer(file);
-        };
-
-        const downloadTemplate = () => {
-          const templateData = [
-            { "Day (Mon-Sun)": "Mon", "Time (HH:MM:SS)": "15:45:00", "ClassName": "P1", "Subject": "Reading" },
-            { "Day (Mon-Sun)": "Mon", "Time (HH:MM:SS)": "16:30:00", "ClassName": "P1", "Subject": "Grammar" },
-            { "Day (Mon-Sun)": "Sat", "Time (HH:MM:SS)": "09:00:00", "ClassName": "P2", "Subject": "Reading" }
-          ];
-          const worksheet = XLSX.utils.json_to_sheet(templateData);
-          const workbook = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(workbook, worksheet, "Timetable");
-          XLSX.writeFile(workbook, "Timetable Setup.xlsx");
-        };
-
-        const exportCurrentTimetable = () => {
-          window.print();
-        };
-
-        const loadCloudData = async () => {
-          if (!firebaseEnabled) return;
-          isLoading.value = true;
-          try {
-            const docRef = doc(db, "timetables", appId);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-              timetableData.value = docSnap.data().lessons || [];
-            } else {
-              timetableData.value = JSON.parse(JSON.stringify(defaultTimetable));
-            }
-          } catch (error) {
-            console.error("Error fetching cloud timetable:", error);
-          } finally {
-            isLoading.value = false;
-            if (selectedGrades.value.length === 0) {
-              selectAllGrades();
-            }
-          }
-        };
-
-        const autoSyncToCloud = async () => {
-          if (!firebaseEnabled || isParentMode.value) return;
-          try {
-            const docRef = doc(db, "timetables", appId);
-            await setDoc(docRef, { 
-              lessons: timetableData.value,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-          } catch (error) {
-            console.error("Cloud auto sync failed:", error);
-          }
-        };
-
-        const generateShareLink = async () => {
-          if (!firebaseEnabled) {
-            showCustomAlert("模式限制", "當前處於本地無雲端模式，無法產生分享連結。");
-            return;
-          }
-          isSavingShare.value = true;
-          try {
-            await autoSyncToCloud();
-            const baseUri = window.location.origin + window.location.pathname;
-            shareUrl.value = `${baseUri}?view=parent&app=${appId}`;
-            isShareModalOpen.value = true;
-          } catch (err) {
-            showCustomAlert("錯誤", "無法生成雲端連結。");
-          } finally {
-            isSavingShare.value = false;
-          }
-        };
-
-        const copyShareUrl = () => {
-          navigator.clipboard.writeText(shareUrl.value).then(() => {
-            showCustomAlert("成功", "家長唯讀連結已複製到您的剪貼簿！");
-          });
-        };
-
-        const exitParentMode = () => {
-          const baseUri = window.location.origin + window.location.pathname;
-          window.location.href = `${baseUri}?app=${appId}`;
-        };
-
-        onMounted(async () => {
-          const urlParams = new URLSearchParams(window.location.search);
-          const viewParam = urlParams.get('view');
-          
-          if (viewParam === 'parent') {
-            isParentMode.value = true;
-            isEditMode.value = false;
-          }
-
-          if (firebaseEnabled) {
-            try {
-              onAuthStateChanged(auth, async (currentUser) => {
-                if (!currentUser) {
-                  await signInAnonymously(auth);
-                }
-                user.value = auth.currentUser;
-                await loadCloudData();
-              });
-            } catch (authError) {
-              console.warn("Firebase 認證失敗，自動切換至純本地離線模式。", authError);
-              timetableData.value = JSON.parse(JSON.stringify(defaultTimetable));
-              selectAllGrades();
-            }
-          } else {
-            // 當前沒有配置 Firebase 時（如普通 GitHub Pages），直接載入預設資料，絕對不白畫面！
-            timetableData.value = JSON.parse(JSON.stringify(defaultTimetable));
-            selectAllGrades();
-          }
-        });
-
-        return {
-          daysLookup,
-          selectedGrades,
-          timetableData,
-          fileName,
-          isEditMode,
-          dayType,
-          isLoading,
-          isModalOpen,
-          isShareModalOpen,
-          isSavingShare,
-          shareUrl,
-          isParentMode,
-          editingCell,
-          form,
-          confirmDialog,
-          alertDialog,
-          uniqueGrades,
-          viewTitle,
-          activeDaysInView,
-          activeTimeSlotsInView,
-          translateDay,
-          formatTime,
-          getSubjectColorClass,
-          getLessons,
-          toggleGradeSelection,
-          selectAllGrades,
-          deselectAllGrades,
-          openEmptyAddModal,
-          openEditModal,
-          closeEditModal,
-          saveLesson,
-          triggerDeleteConfirm,
-          triggerResetConfirm,
-          handleFileUpload,
-          downloadTemplate,
-          exportCurrentTimetable,
-          generateShareLink,
-          copyShareUrl,
-          exitParentMode,
-          executeConfirm
-        };
-      }
-    }).mount('#app');
-  </script>
-</body>
-</html>
+  <div id="app" class="p-4 md:p-6 max-w-7xl mx-auto" v-cloak>
+    
+    <!-- Parent Read-Only Mode Banner Indicator -->
+    <div v-if="isParentMode" class="mb-5 bg-gradient-to-r from-indigo-600 to-violet-700 text-white px-5 py-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md shadow-indigo-100 animate-fade-in">
+      <div class="flex items-center gap-3">
+        <div class="bg-white/20 p-2 rounded-xl">
+          <i class="fa-solid fa-eye text-lg"></i>
+        </div>
+        <div>
+          <span class="font-bold text-base block sm:inline">📢 家長唯讀分享模式</span>
+          <p class="text-xs text-indigo-100 mt-0.5">此頁面為唯讀版本，所有編輯與管理功能已關閉。您可以點擊篩選不同的年級與切換平日/週末課表。</p>
+        </div>
+      </div>
+      <button @click="exitParentMode" class="px-3.5 py-1.5 bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-bold rounded-xl transition shadow-sm shrink-0">
+        返回建立課表
+      </button>
+    </div>
+
+    <!-- Header -->
+    <header class="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div>
+        <div class="flex items-center gap-3">
+          <div class="bg-indigo-600 text-white p-2.5 rounded-xl shadow-md shadow-indigo-100">
+            <i class="fa-solid fa-calendar-days text-xl"></i>
+          </div>
+          <div>
+            <h1 class="text-2xl font-bold text-slate-900">課堂時間表生成器</h1>
+            <p class="text-sm text-slate-500 mt-0.5">專注於 <span class="font-semibold text-indigo-600">多年級對照 / 課程</span> 的極簡高效排課工具</p>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Upload & Download Area (Hidden in Parent Mode) -->
+      <div v-if="!isParentMode" class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+        
+        <!-- Cloud Share Button -->
+        <button @click="generateShareLink" :disabled="isSavingShare" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-sm font-semibold rounded-xl transition shadow-sm w-full sm:w-auto border border-indigo-150">
+          <i v-if="isSavingShare" class="fa-solid fa-spinner animate-spin"></i>
+          <i v-else class="fa-solid fa-share-nodes text-indigo-600"></i>
+          產生家長分享連結
+        </button>
+
+        <!-- Upload button -->
+        <label class="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-xl cursor-pointer transition shadow-sm w-full sm:w-auto">
+          <i class="fa-solid fa-file-import"></i>
+          上傳 Timetable Setup.xlsx
+          <input type="file" ref="fileInput" @change="handleFileUpload" accept=".xlsx, .xls, .csv" class="hidden">
+        </label>
+        
+        <!-- Generate/Download Template button -->
+        <button @click="downloadTemplate" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-xl border border-slate-200 transition shadow-sm w-full sm:w-auto">
+          <i class="fa-solid fa-file-arrow-down text-emerald-600"></i>
+          下載 Excel 範本
+        </button>
+
+        <!-- Reset Button -->
+        <button @click="triggerResetConfirm" class="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 rounded-xl transition w-full sm:w-auto flex justify-center items-center" title="重置為預設資料">
+          <i class="fa-solid fa-arrow-rotate-left mr-2 sm:mr-0"></i>
+          <span class="sm:hidden text-sm font-medium">重置範例</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Loading Spinner -->
+    <div v-if="isLoading" class="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-100">
+      <i class="fa-solid fa-spinner animate-spin text-4xl text-indigo-600 mb-4"></i>
+      <p class="text-sm text-slate-500 font-semibold">正在從雲端載入課表數據...</p>
+    </div>
+
+    <!-- Main Dashboard Content -->
+    <div v-else class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      
+      <!-- Left Sidebar: Controls -->
+      <div class="lg:col-span-1 space-y-6">
+        
+        <!-- Mode switcher (Edit / Print View - Hidden in Parent Mode) -->
+        <div v-if="!isParentMode" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            <i class="fa-solid fa-sliders mr-1"></i> 檢視設定
+          </h2>
+          
+          <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-150">
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-slate-700">啟用編輯模式</span>
+              <span class="text-[10px] text-slate-400">開啟後可自由增刪</span>
+            </div>
+            <button @click="isEditMode = !isEditMode" 
+                    :class="isEditMode ? 'bg-indigo-600' : 'bg-slate-300'" 
+                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none">
+              <span :class="isEditMode ? 'translate-x-5' : 'translate-x-0'" 
+                    class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- View Mode Card (年級複選) -->
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+              <i class="fa-solid fa-filter mr-1"></i> 年級篩選
+            </h2>
+            <div class="flex gap-2">
+              <button @click="selectAllGrades" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold">全選</button>
+              <span class="text-slate-300">|</span>
+              <button @click="deselectAllGrades" class="text-xs text-slate-500 hover:text-slate-800 font-semibold">清空</button>
+            </div>
+          </div>
+
+          <!-- Multiple Selection Checklist -->
+          <div class="space-y-2.5 max-h-64 overflow-y-auto scrollbar-thin pr-1">
+            <div v-for="grade in uniqueGrades" :key="grade" 
+                 @click="toggleGradeSelection(grade)"
+                 class="flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all duration-150"
+                 :class="selectedGrades.includes(grade) ? 'bg-indigo-50/50 border-indigo-200 text-indigo-900 font-medium' : 'bg-slate-50/30 border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900'">
+              <div class="flex items-center justify-center w-5 h-5 rounded-md border"
+                   :class="selectedGrades.includes(grade) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'">
+                <i v-if="selectedGrades.includes(grade)" class="fa-solid fa-check text-[10px]"></i>
+              </div>
+              <span class="text-sm">{{ grade }} 年級</span>
+            </div>
+            <div v-if="uniqueGrades.length === 0" class="text-slate-400 text-xs py-4 text-center">
+              暫無年級資料
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Main Panel: Timetable Grid -->
+      <div class="lg:col-span-3 space-y-4">
+        
+        <!-- Status alert if loaded from file -->
+        <div v-if="fileName && !isParentMode" class="bg-emerald-50 border border-emerald-100 text-emerald-800 px-4 py-3 rounded-2xl flex items-center justify-between text-sm shadow-sm animate-fade-in">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-circle-check text-emerald-600"></i>
+            <span>成功載入來自 <strong class="font-semibold">{{ fileName }}</strong> 的課表數據並完成時間校正。</span>
+          </div>
+          <button @click="fileName = ''" class="text-emerald-600 hover:text-emerald-800">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <!-- Timetable View Title Area & Tab Splitter -->
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <span class="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg">
+              按年級多選檢視
+            </span>
+            <h2 class="text-xl font-bold text-slate-900 mt-1">
+              {{ viewTitle }} 課程時間表
+            </h2>
+          </div>
+          
+          <!-- Tab Buttons: Split Weekdays & Weekends -->
+          <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl w-full md:w-auto">
+            <button @click="dayType = 'weekday'" 
+                    :class="dayType === 'weekday' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                    class="flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-business-time"></i>
+              平日課表 (一至五)
+            </button>
+            <button @click="dayType = 'weekend'" 
+                    :class="dayType === 'weekend' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+                    class="flex-1 md:flex-initial px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-umbrella-beach"></i>
+              週末課表 (六、日)
+            </button>
+          </div>
+
+          <button @click="exportCurrentTimetable" class="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-xl transition shadow-sm w-full md:w-auto justify-center">
+            <i class="fa-solid fa-print"></i>
+            列印當前課表
+          </button>
+        </div>
+
+        <!-- Responsive Timetable Grid Container -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full min-w-[700px] border-collapse table-fixed">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100">
+                  <th class="w-28 p-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">時段 / 節次</th>
+                  <th v-for="day in activeDaysInView" :key="day" class="p-3 text-center text-xs font-bold text-slate-700 uppercase tracking-wider border-l border-slate-100">
+                    {{ translateDay(day) }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <template v-for="timeSlot in activeTimeSlotsInView" :key="timeSlot">
+                  <tr class="hover:bg-slate-50/30 transition">
+                    <!-- Period / Time Header Column -->
+                    <td class="p-3 border-r border-slate-100 align-middle">
+                      <div class="text-xs font-bold text-indigo-600">{{ formatTime(timeSlot) }}</div>
+                      <div class="text-[10px] text-slate-400 mt-0.5">課程時段</div>
+                    </td>
+
+                    <!-- Columns for Active Days -->
+                    <td v-for="day in activeDaysInView" :key="day" class="p-2 border-l border-slate-100 align-middle h-24">
+                      
+                      <!-- Case 1: Render Lessons -->
+                      <div v-if="getLessons(day, timeSlot).length > 0" 
+                           class="h-full rounded-xl p-1 bg-transparent flex flex-col justify-center space-y-1 overflow-y-auto scrollbar-thin">
+                        
+                        <div v-for="lesson in getLessons(day, timeSlot)" :key="lesson.id" 
+                             :class="getSubjectColorClass(lesson.subject)"
+                             class="text-xs leading-snug p-2 rounded-xl border shadow-sm flex items-center justify-between relative group/item transition-all duration-150 min-h-[46px] w-full">
+                          
+                          <!-- Left Column: Grade Tag -->
+                          <span class="px-1.5 py-0.5 bg-slate-900/10 rounded font-black text-[10px] text-indigo-950 shrink-0 select-none mr-2">
+                            {{ lesson.className }}
+                          </span>
+
+                          <!-- Right Column: Course Subject Name -->
+                          <div class="font-extrabold text-indigo-950 text-xs tracking-wide text-right flex-1 truncate">
+                            {{ lesson.subject }}
+                          </div>
+
+                          <!-- Floating Edit Buttons (Only interactive and visible if isEditMode is active) -->
+                          <div v-if="isEditMode && !isParentMode" class="absolute inset-0 bg-slate-900/10 rounded-xl opacity-0 group-hover/item:opacity-100 flex items-center justify-center transition gap-1.5">
+                            <button @click.stop="openEditModal(lesson)" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded p-1.5 text-[10px] shadow" title="編輯">
+                              <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <button @click.stop="triggerDeleteConfirm(lesson)" class="bg-rose-600 hover:bg-rose-700 text-white rounded p-1.5 text-[10px] shadow" title="刪除">
+                              <i class="fa-solid fa-trash"></i>
+                            </button>
+                          </div>
+                        </div>
+
+                        <!-- Mini add button (Only in Edit Mode) -->
+                        <button v-if="isEditMode && !isParentMode" @click="openEmptyAddModal(day, timeSlot)" class="w-full py-1 border border-dashed border-slate-300 hover:border-indigo-400 rounded-lg text-[10px] text-slate-400 hover:text-indigo-600 transition flex items-center justify-center gap-1">
+                          <i class="fa-solid fa-plus"></i> 新增
+                        </button>
+                      </div>
+
+                      <!-- Case 2: Empty Slot State -->
+                      <div v-else class="h-full">
+                        <!-- Active Editing Cell (Only shows dashed border & cursor in Edit Mode) -->
+                        <div v-if="isEditMode && !isParentMode" 
+                             class="h-full flex items-center justify-center border border-dashed border-slate-200 hover:border-indigo-300 hover:bg-slate-50/50 rounded-xl transition cursor-pointer group" 
+                             @click="openEmptyAddModal(day, timeSlot)">
+                          <span class="text-[10px] text-slate-400 font-medium group-hover:text-indigo-600 flex items-center gap-1">
+                            <i class="fa-solid fa-plus text-[9px]"></i> 排課
+                          </span>
+                        </div>
+                        
+                        <!-- Presentation/Clean Mode (Completely blank and empty) -->
+                        <div v-else class="h-full w-full"></div>
+                      </div>
+
+                    </td>
+                  </tr>
+                </template>
+
+                <!-- Fallback when there are no lessons on weekdays/weekends -->
+                <tr v-if="activeTimeSlotsInView.length === 0">
+                  <td :colspan="activeDaysInView.length + 1" class="p-12 text-center text-slate-400 text-sm">
+                    <i class="fa-regular fa-calendar-xmark text-4xl mb-3 block text-slate-300"></i>
+                    請勾選左側要顯示的年級課表，或當前分組（{{ dayType === 'weekday' ? '平日' : '週末' }}）暫無排課資料。
+                    <span v-if="isEditMode && !isParentMode" class="block mt-2 text-xs text-indigo-600">可以開啟編輯模式或新增課堂！</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Edit/Add Modal -->
+    <div v-if="isModalOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden transform transition-all scale-100">
+        <!-- Modal Header -->
+        <div class="bg-indigo-600 px-5 py-4 text-white flex justify-between items-center">
+          <div>
+            <h3 class="font-bold text-lg">{{ editingCell.isExisting ? '編輯課堂資訊' : '新增課程安排' }}</h3>
+            <p class="text-xs text-indigo-100 mt-0.5">{{ translateDay(form.day) }} · {{ formatTime(form.time) }}</p>
+          </div>
+          <button @click="closeEditModal" class="text-white hover:text-indigo-200 transition">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+
+        <!-- Modal Body Form -->
+        <div class="p-5 space-y-4">
+          <!-- Class Input (Optional / Placeholder helper) -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">年級 / 班級 (School Grade)</label>
+            <input type="text" v-model="form.className" :placeholder="'例如：P1, P2'" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+            <p class="text-[10px] text-slate-400 mt-1">請填寫此課程所屬的班級年級標記。</p>
+          </div>
+
+          <!-- Subject Input -->
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">課程科目 (Course)</label>
+            <input type="text" v-model="form.subject" placeholder="例如：Reading, Grammar, Writing" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+          </div>
+
+          <!-- Time and Day edit (if modifying schedule) -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">星期 (Day)</label>
+              <select v-model="form.day" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 transition">
+                <option v-for="d in daysLookup" :key="d.code" :value="d.code">{{ d.name }} ({{ d.code }})</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">時間 (Time)</label>
+              <input type="text" v-model="form.time" placeholder="role: 例如：15:45:00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition">
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer Actions -->
+        <div class="px-5 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2.5">
+          <button @click="closeEditModal" class="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
+            取消
+          </button>
+          <button @click="saveLesson" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm">
+            確認儲存
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Share Link Modal -->
+    <div v-if="isShareModalOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-md overflow-hidden p-6 text-center transform transition-all">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 text-emerald-600 mb-4">
+          <i class="fa-solid fa-share-nodes text-xl"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-900 mb-2">已成功生成分享連結！</h3>
+        <p class="text-xs text-slate-500 mb-5 leading-relaxed">家長點選此連結將只會看到「唯讀版」的課表，無法編輯。</p>
+        
+        <!-- Clipboard Area -->
+        <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-6">
+          <input type="text" readonly :value="shareUrl" class="bg-transparent text-slate-600 text-xs flex-1 outline-none select-all truncate px-2">
+          <button @click="copyShareUrl" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shrink-0 shadow-sm">
+            複製連結
+          </button>
+        </div>
+        
+        <button @click="isShareModalOpen = false" class="w-full px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
+          關閉
+        </button>
+      </div>
+    </div>
+
+    <!-- Custom Beautiful Confirm Modal (Replaces standard confirm) -->
+    <div v-if="confirmDialog.isOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm p-6 text-center transform transition-all">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-rose-100 text-rose-600 mb-4">
+          <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-900 mb-2">{{ confirmDialog.title }}</h3>
+        <p class="text-sm text-slate-500 mb-6 leading-relaxed">{{ confirmDialog.message }}</p>
+        <div class="flex justify-center gap-3">
+          <button @click="confirmDialog.isOpen = false" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition">
+            取消
+          </button>
+          <button @click="executeConfirm" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition shadow-sm">
+            確認
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom Beautiful Alert Modal (Replaces standard alert) -->
+    <div v-if="alertDialog.isOpen" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-sm p-6 text-center transform transition-all">
+        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 text-indigo-600 mb-4">
+          <i class="fa-solid fa-info-circle text-xl"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-900 mb-2">{{ alertDialog.title }}</h3>
+        <p class="text-sm text-slate-500 mb-6 leading-relaxed">{{ alertDialog.message }}</p>
+        <button @click="alertDialog.isOpen = false" class="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-sm">
+          確定
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Firebase Integration with Strict Error-Handling Guards -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+    import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+    import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+    // 100% 安全容錯初始化 (即使環境沒有提供 firebase 參數也絕不中斷頁面加載)
+    let app, auth, db;
+    let firebaseEnabled = false;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+    try {
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        const parsedConfig = typeof __firebase_config === 'string' ? JSON.parse(__firebase_config) : __firebase_config;
+        if (parsedConfig && parsedConfig.apiKey) {
+          app = initializeApp(parsedConfig);
+          auth = getAuth(app);
+          db = getFirestore(app);
+          firebaseEnabled = true;
+        }
+      }
+    } catch (e) {
+      console.warn("Firebase config parsing skipped or failed. Running in Local Mode.", e);
+    }
+
+    const { createApp, ref, computed, onMounted, watch } = Vue;
+
+    createApp({
+      setup() {
+        // Core Definitions
+        const daysLookup = [
+          { code: "Mon", name: "星期一" },
+          { code: "Tue", name: "星期二" },
+          { code: "Wed", name: "星期三" },
+          { code: "Thu", name: "星期四" },
+          { code: "Fri", name: "星期五" },
+          { code: "Sat", name: "星期六" },
+          { code: "Sun", name: "星期日" }
+        ];
+
+        // Active State
+        const selectedGrades = ref([]); 
+        const timetableData = ref([]);
+        const fileName = ref('');
+        const isEditMode = ref(false); 
+        const dayType = ref('weekday'); 
+        const user = ref(null);
+        const isLoading = ref(false);
+        
+        // Modal & Share Link state
+        const isModalOpen = ref(false);
+        const isShareModalOpen = ref(false);
+        const isSavingShare = ref(false);
+        const shareUrl = ref('');
+        const isParentMode = ref(false);
+        const editingCell = ref({ isExisting: false, originalId: null });
+        const form = ref({ className: '', subject: '', day: 'Mon', time: '15:45:00' });
+
+        // Custom UI Dialog States
+        const confirmDialog = ref({ isOpen: false, title: '', message: '', action: null });
+        const alertDialog = ref({ isOpen: false, title: '', message: '' });
+
+        const showCustomAlert = (title, message) => {
+          alertDialog.value = { isOpen: true, title, message };
+        };
+
+        const showCustomConfirm = (title, message, callback) => {
+          confirmDialog.value = { isOpen: true, title, message, action: callback };
+        };
+
+        const executeConfirm = () => {
+          if (confirmDialog.value.action) {
+            confirmDialog.value.action();
+          }
+          confirmDialog.value.isOpen = false;
+        };
+
+        // Translate Day abbreviations to Traditional Chinese
+        const translateDay = (dayStr) => {
+          if (!dayStr) return '';
+          const found = daysLookup.find(d => d.code.toLowerCase() === dayStr.toLowerCase() || d.name === dayStr);
+          return found ? found.name : dayStr;
+        };
+
+        // Helper: Format full times nicely (e.g. "15:45:00" -> "15:45")
+        const formatTime = (timeStr) => {
+          if (!timeStr) return '';
+          const parts = timeStr.split(':');
+          if (parts.length >= 2) {
+            return `${parts[0]}:${parts[1]}`;
+          }
+          return timeStr;
+        };
+
+        // Core Helper: Handle parsing both strings and Excel Serial fraction-of-day numbers
+        const parseExcelTime = (timeVal) => {
+          if (timeVal === undefined || timeVal === null) return '09:00:00';
+          
+          // Case 1: Already a normal formatted string
+          if (typeof timeVal === 'string' && timeVal.includes(':')) {
+            return timeVal.trim();
+          }
+
+          // Case 2: Numeric Excel fractional value
+          let num = parseFloat(timeVal);
+          if (!isNaN(num)) {
+            if (num >= 0 && num < 1) {
+              let totalSeconds = Math.round(num * 24 * 3600);
+              let hours = Math.floor(totalSeconds / 3600);
+              let minutes = Math.floor((totalSeconds % 3600) / 60);
+              let seconds = totalSeconds % 60;
+              
+              const pad = (v) => String(v).padStart(2, '0');
+              return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+            }
+          }
+
+          return String(timeVal).trim();
+        };
+
+        // Helper: Extract broader Grade (e.g., "P1" -> "P1")
+        const getGradeFromClassName = (className) => {
+          if (!className) return '未分類';
+          const name = String(className).trim().toUpperCase();
+          
+          const pMatch = name.match(/^(P\d+)/i);
+          if (pMatch) return pMatch[1].toUpperCase();
+
+          const digitMatch = name.match(/^(\d+)/);
+          if (digitMatch) return digitMatch[1] + '年級';
+
+          return name;
+        };
+
+        // Exact initial dataset matched from your uploaded file!
+        const defaultTimetable = [
+          { id: 1, day: "Mon", time: "15:45:00", className: "P1", subject: "Reading" },
+          { id: 2, day: "Mon", time: "18:00:00", className: "P1", subject: "Reading" },
+          { id: 3, day: "Sat", time: "09:00:00", className: "P1", subject: "Reading" },
+          { id: 4, day: "Sun", time: "11:45:00", className: "P1", subject: "Reading" },
+          { id: 5, day: "Mon", time: "16:30:00", className: "P1", subject: "Grammar" },
+          { id: 6, day: "Mon", time: "18:45:00", className: "P1", subject: "Grammar" },
+          { id: 7, day: "Sat", time: "09:45:00", className: "P1", subject: "Grammar" },
+          { id: 8, day: "Sun", time: "12:30:00", className: "P1", subject: "Grammar" },
+          { id: 9, day: "Mon", time: "17:15:00", className: "P1", subject: "Writing" },
+          
+          { id: 10, day: "Mon", time: "16:30:00", className: "P2", subject: "Reading" },
+          { id: 11, day: "Mon", time: "18:45:00", className: "P2", subject: "Reading" },
+          { id: 12, day: "Sat", time: "10:30:00", className: "P2", subject: "Reading" },
+          { id: 13, day: "Sat", time: "17:00:00", className: "P2", subject: "Reading" },
+          { id: 14, day: "Sun", time: "10:30:00", className: "P2", subject: "Reading" },
+          { id: 15, day: "Mon", time: "15:45:00", className: "P2", subject: "Grammar" },
+          { id: 16, day: "Mon", time: "18:00:00", className: "P2", subject: "Grammar" },
+          { id: 17, day: "Sat", time: "11:15:00", className: "P2", subject: "Grammar" },
+          { id: 18, day: "Sat", time: "17:45:00", className: "P2", subject: "Grammar" },
+          { id: 19, day: "Sun", time: "11:15:00", className: "P2", subject: "Grammar" },
+          { id: 20, day: "Mon", time: "17:15:00", className: "P2", subject: "Writing" },
+          
+          { id: 21, day: "Tue", time: "15:45:00", className: "P3", subject: "Reading" },
+          { id: 22, day: "Tue", time: "18:00:00", className: "P3", subject: "Reading" },
+          { id: 23, day: "Sat", time: "11:15:00", className: "P3", subject: "Reading" },
+          { id: 24, day: "Sat", time: "15:30:00", className: "P3", subject: "Reading" },
+          { id: 25, day: "Sun", time: "09:00:00", className: "P3", subject: "Reading" },
+          { id: 26, day: "Tue", time: "16:30:00", className: "P3", subject: "Grammar" },
+          { id: 27, day: "Tue", time: "18:45:00", className: "P3", subject: "Grammar" },
+          { id: 28, day: "Thu", time: "15:45:00",
