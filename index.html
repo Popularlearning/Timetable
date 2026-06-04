@@ -540,6 +540,67 @@
           return String(timeVal).trim();
         };
 
+        // 解析可能包含多個星期的字串（例如 "一、三", "Mon/Wed", "星期二及四"），並拆分成獨立的星期陣列
+        const parseMultipleDays = (dayStr) => {
+          if (!dayStr) return ['Mon'];
+          const str = String(dayStr).trim();
+          const result = [];
+
+          const cnDays = [
+            { char: '一', code: 'Mon' },
+            { char: '二', code: 'Tue' },
+            { char: '三', code: 'Wed' },
+            { char: '四', code: 'Thu' },
+            { char: '五', code: 'Fri' },
+            { char: '六', code: 'Sat' },
+            { char: '日', code: 'Sun' },
+            { char: '天', code: 'Sun' }
+          ];
+
+          const enDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+          // 使用常見分隔符拆分：頓號、逗號、斜線、"及"、"與"、"and"
+          const splitReg = /[,，、&/\\|及與+ ]|and/i;
+          const parts = str.split(splitReg).map(p => p.trim()).filter(Boolean);
+
+          parts.forEach(part => {
+            const found = daysLookup.find(d => 
+              d.name === part || 
+              d.code.toLowerCase() === part.toLowerCase() ||
+              part.toLowerCase().includes(d.code.toLowerCase()) ||
+              d.name.includes(part)
+            );
+            if (found) {
+              result.push(found.code);
+            } else {
+              // 檢查單個中文字 (例如 "一" 或 "三")
+              for (const cn of cnDays) {
+                if (part.includes(cn.char)) {
+                  result.push(cn.code);
+                  return;
+                }
+              }
+              // 檢查英文縮寫前綴 (例如 "Mon" 或 "Wed")
+              const lowerPart = part.toLowerCase();
+              const matchEnIdx = enDays.findIndex(d => d.startsWith(lowerPart.substring(0, 3)));
+              if (matchEnIdx !== -1) {
+                result.push(daysLookup[matchEnIdx].code);
+              }
+            }
+          });
+
+          // 如果拆分後沒比對出結果，直接在整段字串掃描一次中文字作為保險
+          if (result.length === 0) {
+            cnDays.forEach(cn => {
+              if (str.includes(cn.char)) {
+                result.push(cn.code);
+              }
+            });
+          }
+
+          return result.length > 0 ? [...new Set(result)] : ['Mon'];
+        };
+
         // Helper: Extract broader Grade (e.g., "P1" -> "P1")
         const getGradeFromClassName = (className) => {
           if (!className) return '未分類';
@@ -944,39 +1005,40 @@
                 return foundKey ? row[foundKey] : null;
               };
 
-              const parsedData = parsedJson.map((row, index) => {
+              const parsedData = [];
+              parsedJson.forEach((row, index) => {
                 const dayRaw = getVal(row, [/星期|周|day/i]) || '';
                 const classRaw = getVal(row, [/年級|班級|班別|grade|class/i]) || '';
                 const courseRaw = getVal(row, [/課程|科目|subject|course/i]) || '';
                 const timeRaw = getVal(row, [/時間|時段|time/i]);
 
-                const dayVal = String(dayRaw).trim();
                 const classVal = String(classRaw).trim();
                 const courseVal = String(courseRaw).trim();
+                if (!classVal || !courseVal) return; // 略過無效行
 
                 const timeVal = parseExcelTime(timeRaw);
+                const dayVal = String(dayRaw).trim();
 
-                let standardDay = dayVal;
-                const matchDay = daysLookup.find(d => d.name === dayVal || d.code.toLowerCase() === dayVal.toLowerCase());
-                if (matchDay) {
-                  standardDay = matchDay.code;
-                }
+                // 核心改動：利用 parseMultipleDays 支援一列多天自動拆分
+                const days = parseMultipleDays(dayVal);
 
-                return {
-                  id: Date.now() + index,
-                  day: standardDay || 'Mon',
-                  time: timeVal || '09:00:00',
-                  className: classVal,
-                  subject: courseVal
-                };
-              }).filter(item => item.className && item.subject);
+                days.forEach((stdDay, subIdx) => {
+                  parsedData.push({
+                    id: Date.now() + (index * 100) + subIdx,
+                    day: stdDay,
+                    time: timeVal || '09:00:00',
+                    className: classVal,
+                    subject: courseVal
+                  });
+                });
+              });
 
               if (parsedData.length > 0) {
                 timetableData.value = parsedData;
                 saveToLocalStorage();
                 const importedGrades = [...new Set(parsedData.map(item => getGradeFromClassName(item.className)))];
                 selectedGrades.value = importedGrades;
-                showCustomAlert("匯入成功", `已成功載入並完成時間格式修正，共處理了 ${parsedData.length} 條排課數據！`);
+                showCustomAlert("匯入成功", `已成功載入並自動完成「一週多堂課程」拆分，共處理了 ${parsedData.length} 條排課數據！`);
               } else {
                 showCustomAlert("匯入失敗", "請確保 Excel 內包含這四個基礎欄位：「School Grade」（年級）、「Course」（科目）、「Day」（星期）與「Time」（時間）。");
               }
